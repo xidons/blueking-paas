@@ -24,7 +24,7 @@ from rest_framework import serializers
 
 from paasng.infras.bkmonitorv3.params import QueryAlarmStrategiesParams, QueryAlertsParams
 from paasng.misc.monitoring.monitor.alert_rules.config.constants import RUN_ENVS
-from paasng.platform.applications.serializers import ApplicationSLZ4Record
+from paasng.platform.applications.serializers import ApplicationMiniSLZ
 from paasng.platform.engine.constants import AppEnvName
 from paasng.utils.serializers import HumanizeTimestampField
 
@@ -72,11 +72,19 @@ class ListAlertsSLZ(serializers.Serializer):
 
     def to_internal_value(self, data) -> QueryAlertsParams:
         data = super().to_internal_value(data)
-        return QueryAlertsParams(app_code=self.context["app_code"], **data)
+        params = QueryAlertsParams(**data)
+        if self.context.get("app_code"):
+            params.app_code = self.context.get("app_code")
+        if self.context.get("bk_biz_ids"):
+            params.bk_biz_ids = self.context.get("bk_biz_ids")
+        return params
 
     def validate(self, data: QueryAlertsParams):
         if data.start_time > data.end_time:
             raise serializers.ValidationError("end_time must be greater than start_time")
+
+        if not data.app_code and not data.bk_biz_ids:
+            raise serializers.ValidationError("at least one of app_code or bk_biz_ids is required")
 
         return data
 
@@ -122,15 +130,15 @@ class AlertSLZ(serializers.Serializer):
         return None
 
 
-class AlertListByAppsSLZ(serializers.Serializer):
-    applcation = ApplicationSLZ4Record(read_only=True)
+class AlertListWithCountSLZ(serializers.Serializer):
+    application = ApplicationMiniSLZ(read_only=True)
     count = serializers.IntegerField(help_text="应用告警数")
     alerts = serializers.ListSerializer(help_text="应用告警", child=AlertSLZ())
 
 
-class AlertListByAppsRespSLZ(serializers.Serializer):
+class AlertListWithCountRespSLZ(serializers.Serializer):
     count = serializers.IntegerField(help_text="告警总数")
-    alerts = serializers.ListSerializer(help_text="各个应用的告警", child=AlertListByAppsSLZ())
+    alerts = serializers.ListSerializer(help_text="各个应用的告警", child=AlertListWithCountSLZ())
 
 
 class ListAlarmStrategiesSLZ(serializers.Serializer):

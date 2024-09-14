@@ -365,6 +365,17 @@ class ApplicationSLZ4Record(serializers.ModelSerializer):
         fields = ["id", "type", "code", "name", "logo_url", "config_info"]
 
 
+class ApplicationMiniSLZ(serializers.Serializer):
+    """用于带类型，Logo 的简化应用列表"""
+
+    name = TranslatedCharField()
+    logo_url = serializers.CharField(read_only=True, source="get_logo_url", help_text="应用的Logo地址")
+
+    class Meta:
+        model = Application
+        fields = ["id", "type", "code", "name", "logo_url"]
+
+
 class MarketAppMinimalSLZ(serializers.Serializer):
     name = serializers.CharField()
 
