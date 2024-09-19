@@ -70,7 +70,7 @@ class TestListAlertsView:
         assert resp.data["count"] == 3
         assert len(resp.data["alerts"]) == 1
         assert resp.data["alerts"][0]["count"] == 3
-        assert resp.data["alerts"][0]["application"]["id"] == 1
+        assert resp.data["alerts"][0]["application"]["id"] == "1"
 
 
 class TestAlarmStrategiesView:

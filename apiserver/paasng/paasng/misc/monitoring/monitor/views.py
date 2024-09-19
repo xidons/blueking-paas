@@ -279,10 +279,12 @@ class ListAlertsView(ViewSet, ApplicationCodeInPathMixin):
             return Response(AlertListWithCountRespSLZ({"count": 0, "alerts": None}).data)
 
         bk_monitor_client = make_bk_monitor_client()
+        # 查询应用的监控空间
         monitor_spaces = bk_monitor_client.query_space_biz_id(app_codes=app_codes)
         bk_biz_ids = [space["bk_biz_id"] for space in monitor_spaces]
         if not bk_biz_ids:
             return Response(AlertListWithCountRespSLZ({"count": 0, "alerts": None}).data)
+        bizid_app_map = {space["bk_biz_id"]: space["application"] for space in monitor_spaces}
 
         serializer = ListAlertsSLZ(data=request.data, context={"bk_biz_ids": bk_biz_ids})
         serializer.is_valid(raise_exception=True)
@@ -302,7 +304,6 @@ class ListAlertsView(ViewSet, ApplicationCodeInPathMixin):
             bk_biz_id = alert["bk_biz_id"]
             biz_grouped_alerts[bk_biz_id].append(alert)
 
-        bizid_app_map = {space["bk_biz_id"]: space["application"] for space in monitor_spaces}
         app_grouped_alerts = []
         for bizid, app_alerts in biz_grouped_alerts.items():
             app_grouped_alerts.append(
