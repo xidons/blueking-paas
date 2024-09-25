@@ -72,11 +72,7 @@ class ListAlertsSLZ(serializers.Serializer):
 
     def to_internal_value(self, data) -> QueryAlertsParams:
         data = super().to_internal_value(data)
-        params = QueryAlertsParams(**data)
-        if self.context.get("app_code"):
-            params.app_code = self.context.get("app_code")
-        if self.context.get("bk_biz_ids"):
-            params.bk_biz_ids = self.context.get("bk_biz_ids")
+        params = QueryAlertsParams.create_by_app_codes(**data, app_codes=self.context.get("app_codes", []))
         return params
         params = QueryAlertsParams(**data)
         if self.context.get("app_code"):
@@ -88,12 +84,6 @@ class ListAlertsSLZ(serializers.Serializer):
     def validate(self, data: QueryAlertsParams):
         if data.start_time > data.end_time:
             raise serializers.ValidationError("end_time must be greater than start_time")
-
-        if (not data.app_code and not data.bk_biz_ids) or (data.app_code and data.bk_biz_ids):
-            raise serializers.ValidationError("one of app_code or bk_biz_ids is required, not both")
-
-        if not data.app_code and not data.bk_biz_ids:
-            raise serializers.ValidationError("at least one of app_code or bk_biz_ids is required")
 
         return data
 
