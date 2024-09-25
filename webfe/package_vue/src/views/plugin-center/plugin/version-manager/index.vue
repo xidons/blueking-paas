@@ -117,16 +117,15 @@
         <bk-table-column
           :label="$t('版本')"
           prop="version"
-          :show-overflow-tooltip="true"
+          show-overflow-tooltip
         >
           <template slot-scope="{ row }">
+            {{ row.version || '--' }}
             <span
-              v-bk-tooltips="row.version"
-              :class="{ 'version-num': row.version }"
-              style="cursor: pointer"
-              @click="handleDetail(row)"
+              v-if="row.source_version_type === 'tested_version' && isOfficialVersion && row.id === rollbacks[0]?.id"
+              style="color: #c4c6cc;"
             >
-              {{ row.version || '--' }}
+              ({{ $t('已回滚') }})
             </span>
           </template>
         </bk-table-column>
@@ -145,12 +144,13 @@
           :render-header="$renderHeader"
         >
           <template slot-scope="{ row }">
-            <span>{{ row.source_hash.slice(0, 8) || '--' }}</span>
+            <span v-bk-tooltips="row.comment" class="tips-dashed">{{ row.source_hash.slice(0, 8) || '--' }}</span>
           </template>
         </bk-table-column>
         <bk-table-column
           :label="$t('创建人')"
           prop="creator"
+          show-overflow-tooltip
         >
           <template slot-scope="{ row }">
             <span>{{ row.creator || '--' }}</span>
@@ -159,9 +159,19 @@
         <bk-table-column
           :label="$t('创建时间')"
           prop="created"
+          show-overflow-tooltip
         >
           <template slot-scope="{ row }">
             <span>{{ row.created || '--' }}</span>
+          </template>
+        </bk-table-column>
+        <bk-table-column
+          :label="$t('完成时间')"
+          prop="complete_time"
+          show-overflow-tooltip
+        >
+          <template slot-scope="{ row }">
+            <span>{{ row.complete_time ? formatDate(row.complete_time) : '--' }}</span>
           </template>
         </bk-table-column>
         <!-- Codecc -->
@@ -211,6 +221,15 @@
                 {{ $t('详情') }}
               </bk-button>
               <bk-button
+                v-if="row.report_url"
+                theme="primary"
+                text
+                class="mr10"
+                @click="toReportPage(row, 'gray')"
+              >
+                {{ $t('灰度报告') }}
+              </bk-button>
+              <bk-button
                 v-if="canTerminateStatus.includes(row.gray_status)"
                 theme="primary"
                 text
@@ -236,14 +255,6 @@
             </template>
             <template v-else>
               <span v-if="isOfficialVersion">
-                <bk-button
-                  theme="primary"
-                  text
-                  class="mr10"
-                  @click="handleDetail(row)"
-                >
-                  {{ $t('详情') }}
-                </bk-button>
                 <bk-button
                   theme="primary"
                   text
@@ -275,119 +286,25 @@
                 v-if="row.report_url"
                 theme="primary"
                 text
-                @click="toTestReportPage(row)"
+                @click="toReportPage(row, 'test')"
               >
                 {{ $t('测试报告') }}
+              </bk-button>
+              <!-- codecc & 测试记录测试成功 -->
+              <bk-button
+                v-if="showToRelease(row)"
+                theme="primary"
+                class="ml10"
+                text
+                @click="handleCreateVersion('prod', row.version)"
+              >
+                {{ $t('去发布') }}
               </bk-button>
             </template>
           </div>
         </bk-table-column>
       </bk-table>
     </paas-content-loader>
-
-    <!-- 详情 -->
-    <bk-sideslider
-      :is-show.sync="versionDetailConfig.isShow"
-      :quick-close="true"
-      :width="640"
-    >
-      <div slot="header">
-        {{ $t('版本详情') }}
-      </div>
-      <div
-        slot="content"
-        v-bkloading="{ isLoading: versionDetailLoading, opacity: 1 }"
-        class="p20"
-      >
-        <ul :class="['detail-wrapper', { en: localLanguage === 'en' }]">
-          <li class="item-info">
-            <div class="describe">
-              {{ $t('版本号') }}
-            </div>
-            <div class="content">
-              <span class="tag">{{ $t('正式') }}</span>
-              {{ versionDetail.version }}
-            </div>
-          </li>
-          <li class="item-info">
-            <div class="describe">
-              {{ $t('代码库') }}
-            </div>
-            <div class="content">
-              <a
-                :href="versionDetail.source_location"
-                class="active"
-                target="_blank"
-              >
-                {{ versionDetail.source_location }}
-              </a>
-            </div>
-          </li>
-          <li class="item-info">
-            <div class="describe">
-              {{ $t('代码分支') }}
-            </div>
-            <div class="content">
-              {{ versionDetail.source_version_name }}
-            </div>
-          </li>
-          <li class="item-info">
-            <div class="describe">
-              {{ $t('版本号类型') }}
-            </div>
-            <div class="content">
-              {{ $t(versionNumberType[versionDetail.semver_type]) || '--' }}
-            </div>
-          </li>
-          <li class="item-info h-auto">
-            <div class="describe">
-              {{ $t('版本日志-label') }}
-            </div>
-            <div class="content version-log">
-              <p>{{ versionDetail.comment }}</p>
-            </div>
-          </li>
-          <li class="item-info">
-            <div class="describe">
-              {{ $t('发布状态') }}
-            </div>
-            <div class="content">
-              <div class="status-wrapper">
-                <round-loading v-if="versionDetail.status === 'pending' || versionDetail.status === 'initial'" />
-                <div
-                  v-else
-                  :class="['dot', versionDetail.status]"
-                />
-                <span
-                  v-bk-tooltips="$t(curVersionStatus[versionDetail.status])"
-                  class="pl5"
-                >
-                  {{ $t(curVersionStatus[versionDetail.status]) || '--' }}
-                </span>
-                <template v-if="versionDetail.status === 'failed'">
-                  （{{ $t('部署失败，查看') }}
-                  <span
-                    class="active"
-                    @click="handleRelease(versionDetail)"
-                  >
-                    {{ $t('详情') }}
-                  </span>
-                  ）
-                </template>
-              </div>
-            </div>
-          </li>
-          <li class="item-info">
-            <div class="describe">
-              {{ $t('发布完成时间') }}
-            </div>
-            <div class="content">
-              {{ versionDetail.complete_time ? formatDate(versionDetail.complete_time) : '--' }}
-            </div>
-          </li>
-        </ul>
-      </div>
-    </bk-sideslider>
   </div>
 </template>
 
@@ -409,17 +326,12 @@ export default {
       isLoading: true,
       keyword: '',
       versionList: [],
-      versionDetail: {},
       isTableLoading: false,
       pagination: {
         current: 1,
         count: 0,
         limit: 10,
       },
-      versionDetailConfig: {
-        isShow: false,
-      },
-      versionDetailLoading: true,
       versionNumberType: VERSION_NUMBER_TYPE,
       filterCreator: '',
       filterStatus: [],
@@ -670,28 +582,6 @@ export default {
       });
     },
 
-    // 获取版本详情
-    async getReleaseDetail(curData) {
-      const data = {
-        pdId: this.pdId,
-        pluginId: this.pluginId,
-        releaseId: curData.id,
-      };
-      try {
-        const res = await this.$store.dispatch('plugin/getReleaseDetail', data);
-        this.versionDetail = res;
-      } catch (e) {
-        this.$bkMessage({
-          theme: 'error',
-          message: e.detail || e.message || this.$t('接口异常'),
-        });
-      } finally {
-        setTimeout(() => {
-          this.versionDetailLoading = false;
-        }, 300);
-      }
-    },
-
     handleFilterChange(filters) {
       if (filters.status) {
         this.filterStatus = filters.status.length ? filters.status : [];
@@ -702,7 +592,7 @@ export default {
       }
     },
 
-    handleCreateVersion(type) {
+    handleCreateVersion(type, version) {
       // 正式版 / 测试版
       this.$router.push({
         name: 'pluginVersionEditor',
@@ -713,6 +603,7 @@ export default {
         query: {
           isPending: !!this.curIsPending,
           type,
+          releaseVersion: version,
         },
       });
     },
@@ -721,12 +612,6 @@ export default {
     handleSearch() {
       this.pagination.count = 0;
       this.getVersionList();
-    },
-
-    handleDetail(row) {
-      this.versionDetailConfig.isShow = true;
-      this.versionDetailLoading = true;
-      this.getReleaseDetail(row);
     },
 
     // 发布
@@ -832,8 +717,11 @@ export default {
     },
 
     // 测试报告
-    toTestReportPage(row) {
-      const url = `${row.report_url}?currentVersion=${row.version}`;
+    toReportPage(row, type) {
+      let url = `${row.report_url}?currentVersion=${row.version}`;
+      if (type === 'gray') {
+        url += '&stage=3';
+      }
       this.$router.push({
         name: 'pluginTestReport',
         params: {
@@ -841,7 +729,7 @@ export default {
           id: this.pluginId,
         },
         query: {
-          type: 'test',
+          type: type === 'gray' ? 'prod' : 'test',
           url,
         },
       });
@@ -963,6 +851,12 @@ export default {
         },
       });
     },
+
+    // 是否展示去发布
+    showToRelease(row) {
+      // 测试成功并且分支为 master，展示去发布快捷入口
+      return this.curPluginInfo.has_test_version && !this.isOfficialVersion && row.status === 'successful' && row.source_version_name === 'master';
+    },
   },
 };
 </script>
@@ -995,12 +889,11 @@ export default {
   margin-top: 22px;
   background: #fff;
 
-  .version-num {
-    color: #3a84ff;
-    font-weight: 700;
-  }
   .status-text {
     margin-left: 5px;
+  }
+  .tips-dashed {
+    border-bottom: 1px dashed;
   }
 }
 
@@ -1059,80 +952,6 @@ export default {
   }
 }
 
-.detail-wrapper {
-  border: 1px solid #dfe0e5;
-  &.en {
-    .item-info .describe {
-      width: 150px;
-    }
-  }
-  .item-info {
-    display: flex;
-    min-height: 40px;
-    border-top: 1px solid #dfe0e5;
-
-    &:first-child {
-      border-top: none;
-    }
-
-    .describe,
-    .content {
-      display: flex;
-      align-items: center;
-    }
-
-    .version-log {
-      display: block;
-    }
-
-    .describe {
-      flex-shrink: 0;
-      flex-direction: row-reverse;
-      width: 130px;
-      text-align: right;
-      padding-right: 16px;
-      font-size: 12px;
-      color: #979ba5;
-      line-height: normal;
-      background: #fafbfd;
-    }
-    .content {
-      width: 454px;
-      flex-wrap: wrap;
-      line-height: 1.5;
-      word-break: break-all;
-      flex: 1;
-      font-size: 12px;
-      color: #63656e;
-      padding: 10px 0 10px 16px;
-      border-left: 1px solid #f0f1f5;
-    }
-    .status-wrapper {
-      display: flex;
-      align-items: center;
-    }
-    .active {
-      color: #3a84ff;
-      cursor: pointer;
-    }
-    .tag {
-      display: inline-block;
-      padding: 0 3px;
-      font-size: 12px;
-      height: 16px;
-      line-height: 16px;
-      background: #64baa1;
-      border-radius: 2px;
-      color: #fff;
-      margin-right: 5px;
-    }
-  }
-
-  .h-auto {
-    height: auto;
-    line-height: 22px;
-  }
-}
 .empty-tips {
   margin-top: 5px;
   color: #979ba5;

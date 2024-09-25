@@ -117,6 +117,7 @@ class PluginCodeTemplate(BaseModel):
 class PluginoverviewPage(BaseModel):
     topUrl: Optional[str] = Field(default=None, description="概览页面顶部嵌入地址")
     bottomUrl: Optional[str] = Field(default=None, description="概览页面底部嵌入地址")
+    ignoredUrl: Optional[str] = Field(default=None, description="Codecc 概览页面误报列表地址")
 
 
 @prepare_json_field
@@ -162,6 +163,7 @@ class PluginVisibleRangeLevel(BaseModel):
     name: str
     id: str
     type: Literal["department"]
+    tof_id: Optional[str]
 
 
 @prepare_json_field
@@ -210,7 +212,8 @@ class ReleaseRevisionDefinition(BaseModel):
         "disallow_released_source_version(不允许选择已经发布过的代码分支)，"
         "disallow_releasing_source_version(不允许选择正在发布的代码分支)"
     )
-    reportFromat: Optional[str] = Field(description="发布报告地址格式, 留空则不展示")
+    reportFormat: Optional[str] = Field(description="发布报告地址格式, 留空则不展示")
+    releaseResultFormat: Optional[str] = Field(description="发布结果地址格式, 留空则不展示")
     docs: Optional[str] = Field(description="代码版本校验失败的指引文档")
     versionNo: Literal["automatic", "revision", "commit-hash", "self-fill", "branch-timestamp"] = Field(
         description="版本号生成规则"
