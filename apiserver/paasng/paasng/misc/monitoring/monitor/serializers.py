@@ -24,6 +24,7 @@ from rest_framework import serializers
 
 from paasng.infras.bkmonitorv3.params import QueryAlarmStrategiesParams, QueryAlertsParams
 from paasng.misc.monitoring.monitor.alert_rules.config.constants import RUN_ENVS
+from paasng.platform.applications.serializers import ApplicationWithLogoMinimalSLZ
 from paasng.platform.engine.constants import AppEnvName
 from paasng.utils.serializers import HumanizeTimestampField
 
@@ -71,7 +72,8 @@ class ListAlertsSLZ(serializers.Serializer):
 
     def to_internal_value(self, data) -> QueryAlertsParams:
         data = super().to_internal_value(data)
-        return QueryAlertsParams(app_code=self.context["app_code"], **data)
+        params = QueryAlertsParams.create_by_app_codes(**data, app_codes=self.context.get("app_codes", []))
+        return params
 
     def validate(self, data: QueryAlertsParams):
         if data.start_time > data.end_time:
@@ -119,6 +121,27 @@ class AlertSLZ(serializers.Serializer):
             return list(env)[0]
 
         return None
+
+
+class AlertListByUserSLZ(serializers.Serializer):
+    application = ApplicationWithLogoMinimalSLZ(read_only=True)
+    alerts = serializers.ListSerializer(help_text="应用告警", child=AlertSLZ())
+    count = serializers.SerializerMethodField(help_text="应用告警数")
+    slow_query_count = serializers.SerializerMethodField(help_text="应用慢查询数")
+
+    def get_count(self, obj):
+        return len(obj["alerts"])
+
+    def get_slow_query_count(self, obj):
+        return sum(1 for alert in obj["alerts"] if "慢查询" in alert.get("alert_name", ""))
+
+
+class AlertListByUserRespSLZ(serializers.Serializer):
+    total = serializers.SerializerMethodField(help_text="用户告警总数")
+    alerts = serializers.ListSerializer(help_text="各个应用的告警", child=AlertListByUserSLZ())
+
+    def get_total(self, obj):
+        return sum(len(alert["alerts"]) for alert in obj["alerts"])
 
 
 class ListAlarmStrategiesSLZ(serializers.Serializer):
