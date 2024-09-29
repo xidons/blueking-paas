@@ -16,12 +16,15 @@
 # to the current version of the project delivered to anyone in the future.
 
 import logging
+from datetime import datetime, timedelta
 from unittest import mock
 
 import pytest
 from django.conf import settings
 from django.urls import reverse
+from django.utils import timezone
 from django_dynamic_fixture import G
+from rest_framework import status
 
 from paas_wl.infras.cluster.constants import ClusterFeatureFlag
 from paas_wl.infras.cluster.shim import RegionClusterService
@@ -33,6 +36,7 @@ from paasng.platform.applications.handlers import post_create_application, turn_
 from paasng.platform.applications.models import Application
 from paasng.platform.bkapp_model.models import ModuleProcessSpec
 from paasng.platform.declarative.handlers import get_desc_handler
+from paasng.platform.evaluation.models import AppOperationReport, AppOperationReportCollectionTask
 from paasng.platform.modules.constants import SourceOrigin
 from paasng.platform.modules.models import BuildConfig
 from paasng.platform.modules.models.module import Module
@@ -40,7 +44,7 @@ from paasng.platform.sourcectl.connector import IntegratedSvnAppRepoConnector, S
 from paasng.utils.basic import get_username_by_bkpaas_user_id
 from paasng.utils.error_codes import error_codes
 from tests.utils.auth import create_user
-from tests.utils.helpers import configure_regions, generate_random_string
+from tests.utils.helpers import configure_regions, create_app, generate_random_string
 
 pytestmark = pytest.mark.django_db(databases=["default", "workloads"])
 
@@ -615,3 +619,139 @@ class TestCreateCloudNativeApp:
         assert response.status_code == 201, f'error: {response.json()["detail"]}'
         application = Application.objects.get(code=f"uta-{random_suffix}")
         assert application.feature_flag.has_feature(AppFeatureFlag.ENABLE_BK_LOG_COLLECTOR)
+
+
+class TestListEvaluation:
+    @pytest.fixture()
+    def create_evaluation_reports(self, bk_user):
+        """
+        创建应用评估详情测试数据
+        """
+        collection_task = AppOperationReportCollectionTask.objects.create(start_at=datetime.now())
+
+        app1 = create_app(owner_username=bk_user.username)
+        report1 = AppOperationReport.objects.create(
+            cpu_requests=4000,
+            mem_requests=8192,
+            cpu_limits=8000,
+            mem_limits=16384,
+            cpu_usage_avg=0.003,
+            mem_usage_avg=0.8,
+            res_summary={"cpu": "1000", "mem": "2048"},
+            pv=300,
+            uv=150,
+            latest_deployed_at=timezone.now() - timedelta(days=1),
+            latest_deployer="deployer",
+            latest_operated_at=timezone.now() - timedelta(days=2),
+            latest_operator="operator",
+            latest_operation="Deployment",
+            issue_type="none",
+            collected_at=timezone.now(),
+            app_id=app1.id,
+            administrators=[],
+            deploy_summary={},
+            developers=["dev1", "dev2"],
+            evaluate_result={"issue_type": "none"},
+            visit_summary={"visits": 1000},
+        )
+
+        app2 = create_app(owner_username=bk_user.username)  # 创建另一个独立的 App 实例
+        report2 = AppOperationReport.objects.create(
+            cpu_requests=6000,
+            mem_requests=12288,
+            cpu_limits=12000,
+            mem_limits=24576,
+            cpu_usage_avg=0.004,
+            mem_usage_avg=0.1,
+            res_summary={"cpu": "3000", "mem": "4096"},
+            pv=500,
+            uv=200,
+            latest_deployed_at=timezone.now() - timedelta(days=3),
+            latest_deployer="deployer",
+            latest_operated_at=timezone.now() - timedelta(days=4),
+            latest_operator="operator",
+            latest_operation="Scaling",
+            issue_type="idle",
+            collected_at=timezone.now(),
+            app_id=app2.id,
+            administrators=[],
+            deploy_summary={},
+            developers=["dev3", "dev4"],
+            evaluate_result={"issue_type": "idle"},
+            visit_summary={"visits": 1500},
+        )
+
+        return {"collection_task": collection_task, "reports": [report1, report2]}
+
+    def test_list_evaluation_success(self, create_evaluation_reports, api_client):
+        """
+        测试应用评估详情列表
+        """
+        url = reverse("api.applications.lists.evaluation")
+        params = {"limit": 2, "offset": 0}
+        response = api_client.get(url, params, format="json")
+
+        assert response.status_code == status.HTTP_200_OK
+
+        response_data = response.json()
+
+        assert "count" in response_data
+        assert response_data["count"] == 2
+
+        assert "results" in response_data
+        results = response_data["results"]
+
+        assert "applications" in results
+        assert isinstance(results["applications"], list)
+        assert len(results["applications"]) == 2
+
+        # 结果 app 顺序是数据库表 id 倒序
+        app_data1 = results["applications"][0]
+        report2 = create_evaluation_reports["reports"][1]
+
+        assert app_data1["code"] == report2.app.code
+        assert app_data1["name"] == report2.app.name
+        assert app_data1["type"] == report2.app.type
+        assert app_data1["is_plugin_app"] == report2.app.is_plugin_app
+        assert app_data1["logo_url"] == report2.app.get_logo_url()
+        assert app_data1["cpu_limits"] == report2.cpu_limits
+        assert app_data1["mem_limits"] == report2.mem_limits
+        assert app_data1["cpu_usage_avg"] == report2.cpu_usage_avg
+        assert app_data1["mem_usage_avg"] == report2.mem_usage_avg
+        assert app_data1["pv"] == report2.pv
+        assert app_data1["uv"] == report2.uv
+        assert app_data1["issue_type"] == report2.issue_type
+
+        app_data2 = results["applications"][1]
+        report1 = create_evaluation_reports["reports"][0]
+
+        assert app_data2["code"] == report1.app.code
+        assert app_data2["name"] == report1.app.name
+        assert app_data2["type"] == report1.app.type
+        assert app_data2["is_plugin_app"] == report1.app.is_plugin_app
+        assert app_data2["logo_url"] == report1.app.get_logo_url()
+        assert app_data2["cpu_limits"] == report1.cpu_limits
+        assert app_data2["mem_limits"] == report1.mem_limits
+        assert app_data2["cpu_usage_avg"] == report1.cpu_usage_avg
+        assert app_data2["mem_usage_avg"] == report1.mem_usage_avg
+        assert app_data2["pv"] == report1.pv
+        assert app_data2["uv"] == report1.uv
+        assert app_data2["issue_type"] == report1.issue_type
+
+    def test_issue_count(self, create_evaluation_reports, api_client):
+        """
+        测试获取应用评估结果数量
+        """
+        url = reverse("api.applications.lists.evaluation.issue_count")
+        response = api_client.get(url, format="json")
+
+        assert response.status_code == status.HTTP_200_OK
+        assert "collected_at" in response.data
+        assert "issue_type_counts" in response.data
+        assert "total" in response.data
+        assert response.data["total"] == 2
+        assert len(response.data["issue_type_counts"]) == 2
+
+        for issue in response.data["issue_type_counts"]:
+            assert issue["issue_type"] in ["none", "idle"]
+            assert issue["count"] == 1

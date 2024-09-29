@@ -16,6 +16,9 @@
 # to the current version of the project delivered to anyone in the future.
 
 from .app import (
+    ApplicationEvaluationIssueCountResultSLZ,
+    ApplicationEvaluationListResultSLZ,
+    ApplicationEvaluationSLZ,
     ApplicationFeatureFlagSLZ,
     ApplicationGroupFieldSLZ,
     ApplicationListDetailedSLZ,
@@ -55,6 +58,7 @@ from .member_role import ApplicationMemberRoleOnlySLZ, ApplicationMemberSLZ, Rol
 from .validators import AppIDUniqueValidator
 
 __all__ = [
+    "ApplicationEvaluationIssueCountResultSLZ",
     "ApplicationFeatureFlagSLZ",
     "ApplicationGroupFieldSLZ",
     "ApplicationListDetailedSLZ",
@@ -83,6 +87,8 @@ __all__ = [
     "SearchApplicationSLZ",
     "IdleModuleEnvSLZ",
     "IdleApplicationListOutputSLZ",
+    "ApplicationEvaluationSLZ",
+    "ApplicationEvaluationListResultSLZ",
     "SysThirdPartyApplicationSLZ",
     "UpdateApplicationSLZ",
     "CreateCloudNativeAppSLZ",
