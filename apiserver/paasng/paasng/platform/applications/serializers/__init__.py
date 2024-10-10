@@ -16,7 +16,7 @@
 # to the current version of the project delivered to anyone in the future.
 
 from .app import (
-    ApplicationEvaluationIssueCountResultSLZ,
+    ApplicationEvaluationIssueCountListResultSLZ,
     ApplicationEvaluationListQuerySLZ,
     ApplicationEvaluationListResultSLZ,
     ApplicationEvaluationSLZ,
@@ -59,7 +59,7 @@ from .member_role import ApplicationMemberRoleOnlySLZ, ApplicationMemberSLZ, Rol
 from .validators import AppIDUniqueValidator
 
 __all__ = [
-    "ApplicationEvaluationIssueCountResultSLZ",
+    "ApplicationEvaluationIssueCountListResultSLZ",
     "ApplicationFeatureFlagSLZ",
     "ApplicationGroupFieldSLZ",
     "ApplicationListDetailedSLZ",
