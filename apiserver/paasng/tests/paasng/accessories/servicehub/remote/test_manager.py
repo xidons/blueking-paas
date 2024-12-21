@@ -28,10 +28,11 @@ from django_dynamic_fixture import G
 from paas_wl.infras.cluster.models import Cluster
 from paasng.accessories.servicehub.exceptions import BindServiceNoPlansError, CanNotModifyPlan, ServiceObjNotFound
 from paasng.accessories.servicehub.manager import mixed_service_mgr
-from paasng.accessories.servicehub.models import RemoteServiceEngineAppAttachment
+from paasng.accessories.servicehub.models import RemoteServiceEngineAppAttachment, ServiceEngineAppAttachment
 from paasng.accessories.servicehub.remote import RemoteServiceMgr, collector
 from paasng.accessories.servicehub.remote.manager import MetaInfo, RemoteEngineAppInstanceRel, RemotePlanObj
 from paasng.accessories.servicehub.remote.store import get_remote_store
+from paasng.platform.modules.manager import ModuleCleaner
 from paasng.platform.modules.models import Module
 from tests.paasng.accessories.servicehub import data_mocks
 from tests.utils.api import mock_json_response
@@ -552,6 +553,53 @@ class TestRemoteMgr:
 
         for service_instance_id in expect_obj:
             assert mgr.get_attachment_by_instance_id(svc, service_instance_id) == expect_obj[service_instance_id]
+
+    @mock.patch("paasng.accessories.servicehub.remote.manager.get_cluster_egress_info")
+    @mock.patch("paasng.accessories.servicehub.remote.client.RemoteServiceClient.retrieve_instance_to_be_deleted")
+    @mock.patch("paasng.accessories.servicehub.remote.client.RemoteServiceClient.provision_instance")
+    def test_list_unbound_instance_rels(
+        self, mocked_provision, mocked_retrieve, get_cluster_egress_info, store, bk_app, bk_module
+    ):
+        """Test service instance provision"""
+        get_cluster_egress_info.return_value = {"egress_ips": ["1.1.1.1"], "digest_version": "foo"}
+        mgr = RemoteServiceMgr(store=store)
+
+        svc = mgr.get(id_of_first_service, region=bk_module.region)
+        mgr.bind_service(svc, bk_module)
+
+        attachments: Dict[uuid.UUID, ServiceEngineAppAttachment] = {}
+        for env in bk_app.envs.all():
+            for rel in mgr.list_unprovisioned_rels(env.engine_app):
+                assert rel.is_provisioned() is False
+                rel.provision()
+                attachments[rel.db_obj.service_instance_id] = rel.db_obj
+
+        # Mock retrieve response
+        data = data_mocks.REMOTE_INSTANCE_JSON.copy()
+        data["uuid"] = rel.db_obj.service_instance_id
+        mocked_retrieve.return_value = data
+
+        assert len(attachments) == 2
+
+        cleaner = ModuleCleaner(bk_module)
+        cleaner.delete_services(svc.uuid)
+
+        unbound_rels = []
+        for env in bk_app.envs.all():
+            for unbound_rel in mgr.list_unbound_instance_rels(env.engine_app):
+                assert unbound_rel.db_obj.service_instance_id in attachments
+                assert unbound_rel.db_obj.service_id == attachments[unbound_rel.db_obj.service_instance_id].service_id
+                assert unbound_rel.db_obj.engine_app == attachments[unbound_rel.db_obj.service_instance_id].engine_app
+                unbound_rels.append(unbound_rel)
+
+        assert len(unbound_rels) == len(attachments)
+
+        for unbound_rel in unbound_rels:
+            unbound_rel.recycle_resource()
+
+        for env in bk_app.envs.all():
+            for _rel in mgr.list_unbound_instance_rels(env.engine_app):
+                pytest.fail("Expect no return unbound instance rels after recycle resource")
 
 
 class TestLegacyRemoteMgr:
