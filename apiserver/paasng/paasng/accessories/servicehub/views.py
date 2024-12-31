@@ -47,7 +47,7 @@ from paasng.accessories.servicehub.remote.manager import (
     get_app_by_instance_name,
 )
 from paasng.accessories.servicehub.remote.store import get_remote_store
-from paasng.accessories.servicehub.services import ServiceObj
+from paasng.accessories.servicehub.services import ServiceInstanceObj, ServiceObj
 from paasng.accessories.servicehub.sharing import ServiceSharingManager, SharingReferencesManager
 from paasng.accessories.services.models import ServiceCategory
 from paasng.infras.accounts.permissions.application import app_action_required, application_perm_class
@@ -725,10 +725,25 @@ class UnboundServiceEngineAppAttachmentViewSet(viewsets.ViewSet, ApplicationCode
         categorized_rels = defaultdict(list)
         for env in module.envs.all():
             for rel in mixed_service_mgr.list_unbound_instance_rels(env.engine_app):
-                instance = rel.get_instance()
-                if not instance:
-                    # 如果已经回收了，获取不到 instance，跳过
-                    continue
+                # instance = rel.get_instance()
+                # if not instance:
+                #     # 如果已经回收了，获取不到 instance，跳过
+                #     continue
+
+                instance = ServiceInstanceObj(
+                    uuid=str(rel.db_obj.service_instance_id),
+                    credentials={
+                        "MYSQL_HOST": "9.135.100.1",
+                        "MYSQL_PORT": "3306",
+                        "MYSQL_USER": "bkapp-test32-m-e",
+                        "MYSQL_NAME": "bkapp-test32-m-e",
+                        "SENSITIVE_FIELD": "sensitive",
+                    },
+                    config={"config": "config"},
+                    should_hidden_fields=["MYSQL_PASSWORD"],
+                    should_remove_fields=["SENSITIVE_FIELD"],
+                    create_time=rel.db_obj.created,
+                )
 
                 categorized_rels[str(rel.db_obj.service_id)].append(
                     {
