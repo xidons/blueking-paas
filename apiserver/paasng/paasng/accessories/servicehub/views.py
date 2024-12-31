@@ -737,6 +737,7 @@ class UnboundServiceEngineAppAttachmentViewSet(viewsets.ViewSet, ApplicationCode
                         "MYSQL_PORT": "3306",
                         "MYSQL_USER": "bkapp-test32-m-e",
                         "MYSQL_NAME": "bkapp-test32-m-e",
+                        "MYSQL_PASSWORD": "12345678",
                         "SENSITIVE_FIELD": "sensitive",
                     },
                     config={"config": "config"},
